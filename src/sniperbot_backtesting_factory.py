@@ -1,0 +1,76 @@
+#  This file is part of SniperCallsBot (https://github.com/Drakkar-Software/SniperCallsBot)
+#  Copyright (c) 2023 Drakkar-Software, All rights reserved.
+#
+#  SniperCallsBot is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU General Public License
+#  as published by the Free Software Foundation; either
+#  version 3.0 of the License, or (at your option) any later version.
+#
+#  SniperCallsBot is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+#  General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public
+#  License along with SniperCallsBot. If not, see <https://www.gnu.org/licenses/>.
+import SniperCallsbot_backtesting.api as backtesting_api
+import SniperCallsbot_commons.configuration as configuration
+import SniperCallsbot_backtesting.constants as constants
+
+import src.api.backtesting as SniperCallsbot_backtesting_api
+import src.SniperCallsbot as SniperCallsbot_class
+
+
+class SniperCallsBotBacktestingFactory(SniperCallsbot_class.SniperCallsBot):
+    def __init__(self, config: configuration.Configuration,
+                 log_report=True,
+                 run_on_common_part_only=True,
+                 enable_join_timeout=True,
+                 enable_logs=True):
+        super().__init__(config, community_authenticator=_BacktestingCommunityAuthenticator())
+        self.independent_backtesting = None
+        self.log_report = log_report
+        self.run_on_common_part_only = run_on_common_part_only
+        self.enable_join_timeout = enable_join_timeout
+        self.enable_logs = enable_logs
+
+    async def initialize(self):
+        try:
+            await self.initializer.create(False)
+            join_backtesting_timeout = constants.BACKTESTING_DEFAULT_JOIN_TIMEOUT if self.enable_join_timeout else None
+            self.independent_backtesting = SniperCallsbot_backtesting_api.create_independent_backtesting(
+                self.config,
+                self.tentacles_setup_config,
+                backtesting_api.get_backtesting_data_files(self.config),
+                run_on_common_part_only=self.run_on_common_part_only,
+                join_backtesting_timeout=join_backtesting_timeout,
+                enable_logs=self.enable_logs,
+                enforce_total_databases_max_size_after_run=True)
+            await SniperCallsbot_backtesting_api.initialize_and_run_independent_backtesting(self.independent_backtesting,
+                                                                                     log_errors=False)
+            await SniperCallsbot_backtesting_api.join_independent_backtesting(self.independent_backtesting,
+                                                                       timeout=join_backtesting_timeout)
+            if self.log_report:
+                SniperCallsbot_backtesting_api.log_independent_backtesting_report(self.independent_backtesting)
+            await SniperCallsbot_backtesting_api.stop_independent_backtesting(self.independent_backtesting, memory_check=False)
+        except Exception as e:
+            self.logger.exception(e, True, f"Error when starting backtesting: {e.__class__.__name__}")
+        finally:
+            self.task_manager.stop_tasks(stop_SniperCallsbot=False)
+
+
+class _BacktestingCommunityAuthenticator:
+    """
+    Used as a community mock in backtesting bots
+    """
+    def update(self, *args):
+        pass
+
+    def is_initialized(self):
+        return True
+
+    def is_using_the_current_loop(self):
+        return True
+
+    async def stop(self):
+        pass

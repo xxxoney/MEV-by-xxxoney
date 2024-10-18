@@ -1,0 +1,42 @@
+version: "3"
+
+services:
+  SniperCallsbot:
+    image: drakkarsoftware/SniperCallsbot:stable
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.SniperCallsbot.rule=Host("${HOST:-SniperCallsbot.localhost}")
+      - traefik.http.services.SniperCallsbot.loadbalancer.server.port=${PORT:-5001}
+      - traefik.http.routers.SniperCallsbot.tls=true
+    volumes:
+       - ./logs:/SniperCallsbot/logs
+       - ./backtesting:/SniperCallsbot/backtesting
+       - ./tentacles:/SniperCallsbot/tentacles
+       - ./user:/SniperCallsbot/user
+    expose:
+       - ${PORT:-5001}
+    restart: always
+
+  traefik:
+    image: traefik:v2.10
+    restart: always
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--entrypoints.websecure.address=:443"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+  
+  watchtower:
+    image: containrrr/watchtower
+    restart: always
+    command: --cleanup --include-restarting
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
